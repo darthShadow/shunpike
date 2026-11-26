@@ -49,7 +49,7 @@ func (e *Engine) confirmedPongLocked(k key.NodePublic) (protocol.Confirmation, b
 	c, ok := e.pongs[k]
 	p, present := e.peerConfig[k]
 	now := time.Now()
-	if ok && (e.closed || !present || !now.Before(p.Expires) || !now.Before(e.discovery[k].lastPong.Add(confirmationLifetime))) {
+	if ok && (e.closed || !present || !now.Before(p.Expires) || !now.Before(e.discovery[k].lastPong.Add(confirmationLifetime)) || !e.windowOpen()) {
 		delete(e.pongs, k)
 		e.notifyRegistration()
 		return protocol.Confirmation{}, false
@@ -60,6 +60,9 @@ func (e *Engine) confirmedPongLocked(k key.NodePublic) (protocol.Confirmation, b
 func (e *Engine) ping(ctx context.Context, k key.NodePublic) (*ipnstate.PingResult, error) {
 	if err := ctx.Err(); err != nil {
 		return nil, err
+	}
+	if !e.windowOpen() {
+		return nil, errWindowEnded
 	}
 	e.mu.RLock()
 	n := e.peers[k]
@@ -96,7 +99,7 @@ func (e *Engine) recordPong(k key.NodePublic, disco key.DiscoPublic, pong *ipnst
 	defer e.mu.Unlock()
 	n := e.peers[k]
 	now := time.Now()
-	if !n.Valid() || n.DiscoKey() != disco || e.closed || !now.Before(e.peerConfig[k].Expires) {
+	if !n.Valid() || n.DiscoKey() != disco || e.closed || !now.Before(e.peerConfig[k].Expires) || !e.windowOpen() {
 		return
 	}
 	old, had := e.confirmedPongLocked(k)

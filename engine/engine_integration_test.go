@@ -315,7 +315,7 @@ func TestSignalingRegionSynthesized(t *testing.T) {
 }
 
 func TestRelayedDataGatePerPeer(t *testing.T) {
-	_, dial := signalingFixture(t)
+	srv, dial := signalingFixture(t)
 	allowedKey := NodePrivateFromBytes(key.NewNode().Raw32())
 	deniedKey := NodePrivateFromBytes(key.NewNode().Raw32())
 	a := testEngine(t, Config{Signaling: &Signaling{Dial: dial}, RelayedDataAllowed: func(k protocol.NodeKey) bool { return k == allowedKey.Public() }})
@@ -334,6 +334,17 @@ func TestRelayedDataGatePerPeer(t *testing.T) {
 	}
 	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
 	defer cancel()
+	// The signaling server drops a packet for a peer that has not registered,
+	// and each disco ping below is sent once. Ping only after all three engines
+	// are present.
+	poll(t, ctx, func() bool {
+		for _, e := range []*Engine{a, allowed, denied} {
+			if !srv.IsClientConnectedForTest(nodePublic(e.PublicKey())) {
+				return false
+			}
+		}
+		return true
+	})
 	for _, peer := range []*Engine{allowed, denied} {
 		if pong, err := a.ping(ctx, nodePublic(peer.PublicKey())); err != nil || pong.DERPRegionID == 0 {
 			t.Fatalf("relay disco=%+v err=%v", pong, err)

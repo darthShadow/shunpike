@@ -171,6 +171,10 @@ func (e *Engine) SetPeers(ps []Peer) error {
 }
 
 func (e *Engine) applyPeersLocked(next map[key.NodePublic]Peer, now time.Time) error {
+	// An ended packet window admits no peer, whatever the caller passes.
+	if !e.windowOpen() {
+		next = map[key.NodePublic]Peer{}
+	}
 	e.mu.Lock()
 	if e.closed {
 		e.mu.Unlock()
@@ -272,7 +276,7 @@ func (e *Engine) IsPeer(k protocol.NodeKey) bool {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
 	p, ok := e.peerConfig[nodePublic(k)]
-	return ok && !e.closed && time.Now().Before(p.Expires)
+	return ok && !e.closed && time.Now().Before(p.Expires) && e.windowOpen()
 }
 
 func (e *Engine) expiryLoop() {
@@ -280,6 +284,14 @@ func (e *Engine) expiryLoop() {
 	defer timer.Stop()
 	timer.Stop()
 	for {
+		until, open := e.window()
+		if !open {
+			// The packet window has ended: with no peer in its map magicsock
+			// sends and accepts no discovery, and later peer updates install none.
+			e.Expire()
+			<-e.ctx.Done()
+			return
+		}
 		e.mu.RLock()
 		var deadline time.Time
 		for k, p := range e.peerConfig {
@@ -294,6 +306,9 @@ func (e *Engine) expiryLoop() {
 			}
 		}
 		e.mu.RUnlock()
+		if !until.IsZero() && (deadline.IsZero() || until.Before(deadline)) {
+			deadline = until
+		}
 		var timeout <-chan time.Time
 		if !deadline.IsZero() {
 			timer.Reset(time.Until(deadline))

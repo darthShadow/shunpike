@@ -6,6 +6,10 @@ Shunpike is a Go library that connects peers over a direct UDP path and serves H
 
 Shunpike is pre-1.0. The exported Go API and the coordination wire protocol can change in any release before 1.0. It targets direct connections between a media server and its clients, and it builds against forks of quic-go and Tailscale (see [Forks](#forks)).
 
+## Goals
+
+On a clean, short path, a transfer over Shunpike should cost as close as possible to a single HTTP/1.1 or HTTP/2 stream over TCP: bytes on the wire, requests, connections and CPU per second of media. On a lossy or long path it should deliver better throughput, startup and seek times than that stream. Judge each change to the engine, `n4` or the forks against both conditions.
+
 ## Packages
 
 | Package | What it does |

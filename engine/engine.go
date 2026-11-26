@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/quic-go/quic-go"
@@ -74,6 +75,19 @@ type Config struct {
 	GSO                bool
 	RelayedDataAllowed func(peer protocol.NodeKey) bool
 	StaticNetwork      bool
+	// Window, when set, returns the instant the engine's permission to exchange
+	// packets with peers ends; a zero or past instant means it has ended. The
+	// engine reads it before each probe, on each pong, confirmation read, peer
+	// update and lease check, and again at the instant it returned, so a later
+	// instant extends the permission. Once it has ended the engine removes every
+	// peer, so magicsock sends and accepts no discovery for them, and it records
+	// no confirmation and installs no later peer until Close. Until the expiry
+	// loop has removed the peers, magicsock can still answer a ping already in
+	// flight: one timer firing and one peer update, or up to one 500 ms probe
+	// round when Window ends without moving its instant. The engine may call
+	// Window while it holds its own locks, so Window must not call the engine.
+	// Nil sets no limit.
+	Window func() time.Time
 }
 
 // Validate refuses an unconfigured key, missing dialer and malformed servers or regions.
@@ -129,6 +143,7 @@ type Engine struct {
 	lastPort        uint16
 	portDriftLogged bool
 	timerWake       func() // observes deadline firings in clock-controlled tests
+	windowEnded     atomic.Bool
 	once            sync.Once
 	closed          bool
 	closeErr        error

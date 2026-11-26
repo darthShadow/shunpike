@@ -278,9 +278,17 @@ func TestEndToEndSequence(t *testing.T) {
 		if lag > callMeMaybeBound {
 			t.Fatalf("%s: call-me-maybe handled %v after the send, want within %v", c.name, lag, callMeMaybeBound)
 		}
+		// Only the mover's sockets changed, so only a path to the mover has a port
+		// to check. The path from the mover may use the other engine's IPv6
+		// socket, whose port differs from LocalPort (the IPv4 socket's port) when
+		// that engine started on port 0.
+		other := h.e
+		if c.mover == h.e {
+			other = d.e
+		}
 		waitFor(t, c.name+": paths after the port change", 15*time.Second, func() bool {
-			dp, hp := d.e.Path(h.e.PublicKey()), h.e.Path(d.e.PublicKey())
-			return dp.Class == "direct" && dp.Endpoint.Port() == h.e.LocalPort() && hp.Class == "direct" && hp.Endpoint.Port() == d.e.LocalPort()
+			toMover, fromMover := other.Path(c.mover.PublicKey()), c.mover.Path(other.PublicKey())
+			return toMover.Class == "direct" && toMover.Endpoint.Port() == c.mover.LocalPort() && fromMover.Class == "direct"
 		})
 	}
 	stopFlow()
